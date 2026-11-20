@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="오늘의 한자">
 <title>오늘의 한자</title>
+<script src="./quiz-card.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
 :root{
@@ -74,11 +75,6 @@ h2{font-size:18px;margin:28px 0 10px}
 .choice:disabled{cursor:default}
 .choice:disabled:not(.right):not(.wrong){opacity:.55}
 
-.verdict{margin-top:18px;border-radius:16px;padding:16px 18px}
-.verdict.ok{background:var(--ok-bg)} .verdict.ng{background:var(--ng-bg)}
-.verdict h3{margin:0 0 6px;font-size:18px}
-.verdict.ok h3{color:var(--ok)} .verdict.ng h3{color:var(--ng)}
-.verdict p{margin:0;white-space:pre-wrap;word-break:keep-all}
 
 .footer{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(to top,var(--bg) 70%,transparent);
   padding:20px 16px calc(14px + env(safe-area-inset-bottom))}
@@ -112,7 +108,7 @@ input[type=text],input[type=number],input[type=password],input[type=url]{width:1
 const LS_STATE='hanjaState.v1', LS_CFG='hanjaCfg.v1';
 let Q=[], QB={}, DECKS=[], S=null, loadErr='';
 let cfg=JSON.parse(localStorage.getItem(LS_CFG)||'{}');
-let view='home', cur=0, curDeck='', syncStatus='', pushTimer=null, settingsMsg='';
+let view='home', cur=0, curDeck='', syncStatus='', pushTimer=null, settingsMsg='', flipJustAnswered=false;
 const $app=document.getElementById('app');
 
 const e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -246,16 +242,10 @@ function renderQuiz(){
   if(!t){view='home';return render();}
   const id=t.ids[cur],q=QB[id];
   if(!q){view='home';return render();}
-  const r=t.res[id]||{},answered=r.picked!=null,ok=answered&&r.picked===q.answer;
+  const r=t.res[id]||{},answered=r.picked!=null;
   const isReview=t.wrongFrom.includes(id);
-  const ch=q.choices.map((c,i)=>{
-    let cls='';
-    if(answered){if(i===q.answer)cls='right';else if(i===r.picked)cls='wrong';}
-    return `<button class="choice ${cls}" ${answered?'disabled':''} onclick="pick(${i})"><span class="n">${i+1}</span><span class="t">${e(c)}</span></button>`;
-  }).join('');
-  const verdict=answered?`<div class="verdict ${ok?'ok':'ng'}">
-      <h3>${ok?'정답이에요!':'아쉬워요. 정답은 '+(q.answer+1)+'번'}</h3>
-      <p>${e(q.explanation||'')}</p></div>`:'';
+  const flipping=answered&&flipJustAnswered;
+  flipJustAnswered=false;
   const last=cur===t.ids.length-1;
   const footer=answered?`<div class="footer"><div class="row">
       <button class="btn ghost" onclick="retry()">다시 풀기</button>
@@ -263,13 +253,8 @@ function renderQuiz(){
   $app.innerHTML=`
     <div class="top"><button class="icon-btn" onclick="home()" aria-label="처음으로">←</button><span class="sync">${e(curDeck)} · ${cur+1} / ${t.ids.length}</span><span style="width:44px"></span></div>
     ${dotsHtml(curDeck,true)}
-    <div class="qhead">${isReview?'<span class="tag">복습</span>':''}</div>
-    ${q.big?`<div class="bighan" lang="ko">${e(q.big)}</div>`:''}
-    <div class="qtext">${e(q.question)}</div>
-    ${q.image?`<img class="qimg" src="${e(q.image)}" alt="">`:''}
-    <div class="choices">${ch}</div>
-    ${verdict}${footer}`;
-  window.scrollTo(0,0);
+    ${QuizCard.render(q,r.picked,isReview,flipping,e)}${footer}`;
+  QuizCard.focus(answered);
 }
 
 function renderResult(){
@@ -350,7 +335,7 @@ function pick(i){
   // 틀린 적이 있으면 (다시 풀어 맞혀도) 다음 출제 대상, 한 번도 안 틀렸으면 대기열에서 제거
   S.queue=S.queue.filter(x=>x.id!==id);
   if(r.everWrong)S.queue.push({id,date:t.date});
-  save();render();
+  save();flipJustAnswered=true;render();
 }
 function retry(){const t=TD(),r=t.res[t.ids[cur]];if(r){r.picked=null;save();render();}}
 function next(){
